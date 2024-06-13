@@ -2,6 +2,7 @@ import os
 import cv2
 import argparse
 import glob
+import time
 import torch
 from torchvision.transforms.functional import normalize
 from basicsr.utils import imwrite, img2tensor, tensor2img
@@ -11,9 +12,6 @@ from facelib.utils.face_restoration_helper import FaceRestoreHelper
 from facelib.utils.misc import is_gray
 
 from basicsr.utils.registry import ARCH_REGISTRY
-
-import time
-from tqdm import tqdm
 
 pretrain_model_url = {
     'restoration': 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth',
@@ -164,135 +162,132 @@ if __name__ == '__main__':
         use_parse=True,
         device=device)
 
-    # -------------------- start to processing ---------------------
-    for i, img_path in tqdm(enumerate(input_img_list)):
-        # clean all the intermediate results to process the next image
-        face_helper.clean_all()
+#     # -------------------- start to processing ---------------------
+#     for i, img_path in enumerate(input_img_list):
+#         # clean all the intermediate results to process the next image
+#         face_helper.clean_all()
         
-        start = time.time()
-        if isinstance(img_path, str):
-            img_name = os.path.basename(img_path)
-            basename, ext = os.path.splitext(img_name)
-            # print(f'[{i+1}/{test_img_num}] Processing: {img_name}')
-            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        else: # for video processing
-            basename = str(i).zfill(6)
-            img_name = f'{video_name}_{basename}' if input_video else basename
-            # print(f'[{i+1}/{test_img_num}] Processing: {img_name}')
-            img = img_path
-        end1 = time.time()
-        # print('end1:', end1-start)
+#         start = time.time()
+#         if isinstance(img_path, str):
+#             img_name = os.path.basename(img_path)
+#             basename, ext = os.path.splitext(img_name)
+#             print(f'[{i+1}/{test_img_num}] Processing: {img_name}')
+#             img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+#         else: # for video processing
+#             basename = str(i).zfill(6)
+#             img_name = f'{video_name}_{basename}' if input_video else basename
+#             print(f'[{i+1}/{test_img_num}] Processing: {img_name}')
+#             img = img_path
+#         end1 = time.time()
+#         print('load img time:', end1-start)
 
-        if args.has_aligned: 
-            # the input faces are already cropped and aligned
-            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
-            face_helper.is_gray = is_gray(img, threshold=10)
-            # if face_helper.is_gray:
-            #     print('Grayscale input: True')
-            face_helper.cropped_faces = [img]
-        else:
-            face_helper.read_image(img)
-            # get face landmarks for each face
-            num_det_faces = face_helper.get_face_landmarks_5(
-                only_center_face=args.only_center_face, resize=640, eye_dist_threshold=5)
-            # print(f'\tdetect {num_det_faces} faces')
-            # align and warp each face
-            face_helper.align_warp_face()
-        end2 = time.time()
-        # print('end2:', end2-end1)
+#         if args.has_aligned: 
+#             # the input faces are already cropped and aligned
+#             img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
+#             face_helper.is_gray = is_gray(img, threshold=10)
+#             if face_helper.is_gray:
+#                 print('Grayscale input: True')
+#             face_helper.cropped_faces = [img]
+#         else:
+#             face_helper.read_image(img)
+#             # get face landmarks for each face
+#             num_det_faces = face_helper.get_face_landmarks_5(
+#                 only_center_face=args.only_center_face, resize=640, eye_dist_threshold=5)
+#             print(f'\tdetect {num_det_faces} faces')
+#             # align and warp each face
+#             face_helper.align_warp_face()
+#         end2 = time.time()
+#         print('align face time:', end2-end1)
 
-        # face restoration for each cropped face
-        for idx, cropped_face in enumerate(face_helper.cropped_faces):
-            # prepare data
-            cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
-            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-            cropped_face_t = cropped_face_t.unsqueeze(0).to(device)
+#         # face restoration for each cropped face
+#         for idx, cropped_face in enumerate(face_helper.cropped_faces):
+#             # prepare data
+#             cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
+#             normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+#             cropped_face_t = cropped_face_t.unsqueeze(0).to(device)
 
-            try:
-                with torch.no_grad():
-                    output = net(cropped_face_t, w=w, adain=True)[0]
-                    restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
-                del output
-                torch.cuda.empty_cache()
-            except Exception as error:
-                print(f'\tFailed inference for CodeFormer: {error}')
-                restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+#             try:
+#                 with torch.no_grad():
+#                     output = net(cropped_face_t, w=w, adain=True)[0]
+#                     restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+#                 del output
+#                 torch.cuda.empty_cache()
+#             except Exception as error:
+#                 print(f'\tFailed inference for CodeFormer: {error}')
+#                 restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
 
-            restored_face = restored_face.astype('uint8')
-            face_helper.add_restored_face(restored_face, cropped_face)
-        end3 = time.time()
-        # print('end3:', end3-end2)
+#             restored_face = restored_face.astype('uint8')
+#             face_helper.add_restored_face(restored_face, cropped_face)
+#         end3 = time.time()
+#         print('restore face time:', end3-end2)
 
-        # paste_back
-        if not args.has_aligned:
-            # upsample the background
-            if bg_upsampler is not None:
-                # Now only support RealESRGAN for upsampling background
-                bg_img = bg_upsampler.enhance(img, outscale=args.upscale)[0]
-            else:
-                bg_img = None
-            end4_1 = time.time()
-            # print('end4_1:', end4_1-end3)
-            face_helper.get_inverse_affine(None)
-            end4_2 = time.time()
-            # print('end4_2:', end4_2-end4_1)
-            # paste each restored face to the input image
-            if args.face_upsample and face_upsampler is not None: 
-                restored_img = face_helper.paste_faces_to_input_image(upsample_img=bg_img, draw_box=args.draw_box, face_upsampler=face_upsampler)
-            else:
-                restored_img = face_helper.paste_faces_to_input_image(upsample_img=bg_img, draw_box=args.draw_box)
-            end4_3 = time.time()
-            # print('end4_3:', end4_3-end4_2)
-        end4 = time.time()
-        # print('end4:', end4-end3)
+#         # paste_back
+#         if not args.has_aligned:
+#             # upsample the background
+#             if bg_upsampler is not None:
+#                 # Now only support RealESRGAN for upsampling background
+#                 bg_img = bg_upsampler.enhance(img, outscale=args.upscale)[0]
+#             else:
+#                 bg_img = None
+#             face_helper.get_inverse_affine(None)
+#             # paste each restored face to the input image
+#             if args.face_upsample and face_upsampler is not None: 
+#                 restored_img = face_helper.paste_faces_to_input_image(upsample_img=bg_img, draw_box=args.draw_box, face_upsampler=face_upsampler)
+#             else:
+#                 restored_img = face_helper.paste_faces_to_input_image(upsample_img=bg_img, draw_box=args.draw_box)
+#         end4 = time.time()
+#         print('paste back time:', end4-end3)
 
-        # save faces
-        for idx, (cropped_face, restored_face) in enumerate(zip(face_helper.cropped_faces, face_helper.restored_faces)):
-            # save cropped face
-            if not args.has_aligned: 
-                save_crop_path = os.path.join(result_root, 'cropped_faces', f'{basename}_{idx:02d}.png')
-                imwrite(cropped_face, save_crop_path)
-            # save restored face
-            if args.has_aligned:
-                save_face_name = f'{basename}.png'
-            else:
-                save_face_name = f'{basename}_{idx:02d}.png'
-            if args.suffix is not None:
-                save_face_name = f'{save_face_name[:-4]}_{args.suffix}.png'
-            save_restore_path = os.path.join(result_root, 'restored_faces', save_face_name)
-            imwrite(restored_face, save_restore_path)
-        end5 = time.time()
-        # print('end5:', end5-end4)
+#         # save faces
+#         for idx, (cropped_face, restored_face) in enumerate(zip(face_helper.cropped_faces, face_helper.restored_faces)):
+#             # save cropped face
+#             if not args.has_aligned: 
+#                 save_crop_path = os.path.join(result_root, 'cropped_faces', f'{basename}_{idx:02d}.png')
+#                 imwrite(cropped_face, save_crop_path)
+#             # save restored face
+#             if args.has_aligned:
+#                 save_face_name = f'{basename}.png'
+#             else:
+#                 save_face_name = f'{basename}_{idx:02d}.png'
+#             if args.suffix is not None:
+#                 save_face_name = f'{save_face_name[:-4]}_{args.suffix}.png'
+#             save_restore_path = os.path.join(result_root, 'restored_faces', save_face_name)
+#             imwrite(restored_face, save_restore_path)
+#         end5 = time.time()
+#         print('save faces time:', end5-end4)
 
-        # save restored img
-        if not args.has_aligned and restored_img is not None:
-            if args.suffix is not None:
-                basename = f'{basename}_{args.suffix}'
-            save_restore_path = os.path.join(result_root, 'final_results', f'{basename}.png')
-            imwrite(restored_img, save_restore_path)
-        end6 = time.time()
-        # print('end6:', end6-end5)
+#         # save restored img
+#         if not args.has_aligned and restored_img is not None:
+#             if args.suffix is not None:
+#                 basename = f'{basename}_{args.suffix}'
+#             save_restore_path = os.path.join(result_root, 'final_results', f'{basename}.png')
+#             imwrite(restored_img, save_restore_path)
+#         end6 = time.time()
+#         print('save restored img time:', end6-end5)
+        
+#         end = time.time()
+#         print('one loop time:', end-start)
 
-#     # save enhanced video
-#     if input_video:
-#         print('Video Saving...')
-#         # load images
-#         video_frames = []
-#         img_list = sorted(glob.glob(os.path.join(result_root, 'final_results', '*.[jp][pn]g')))
-#         for img_path in img_list:
-#             img = cv2.imread(img_path)
-#             video_frames.append(img)
-#         # write images to video
-#         height, width = video_frames[0].shape[:2]
-#         if args.suffix is not None:
-#             video_name = f'{video_name}_{args.suffix}.png'
-#         save_restore_path = os.path.join(result_root, f'{video_name}.mp4')
-#         vidwriter = VideoWriter(save_restore_path, height, width, fps, audio)
+# #     # save enhanced video
+# #     if input_video:
+# #         print('Video Saving...')
+# #         # load images
+# #         video_frames = []
+# #         img_list = sorted(glob.glob(os.path.join(result_root, 'final_results', '*.[jp][pn]g')))
+# #         for img_path in img_list:
+# #             img = cv2.imread(img_path)
+# #             video_frames.append(img)
+# #         # write images to video
+# #         height, width = video_frames[0].shape[:2]
+# #         if args.suffix is not None:
+# #             video_name = f'{video_name}_{args.suffix}.png'
+# #         save_restore_path = os.path.join(result_root, f'{video_name}.mp4')
+# #         vidwriter = VideoWriter(save_restore_path, height, width, fps, audio)
          
-#         for f in video_frames:
-#             vidwriter.write_frame(f)
-#         vidwriter.close()
-        
+# #         for f in video_frames:
+# #             vidwriter.write_frame(f)
+# #         vidwriter.close()
+    
     # save enhanced video TODO optimize memory usage
     if input_video:
         print('Video Saving...')
@@ -308,7 +303,7 @@ if __name__ == '__main__':
             video_name = f'{video_name}_{args.suffix}.png'
         save_restore_path = os.path.join(result_root, f'{video_name}.mp4')
         vidwriter = VideoWriter(save_restore_path, height, width, fps, audio)
-        
+
         for img_path in img_list:
             f = cv2.imread(img_path)
             vidwriter.write_frame(f)
