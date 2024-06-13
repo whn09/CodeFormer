@@ -98,7 +98,7 @@ class VideoWriter:
                                 audio,
                                 video_save_path,
                                 pix_fmt='yuv420p',
-                                vcodec='libx264',
+                                # vcodec='libx264',
                                 loglevel='error',
                                 acodec='copy').overwrite_output().run_async(
                                     pipe_stdin=True, pipe_stdout=True, cmd='ffmpeg'))
